@@ -1,0 +1,33 @@
+# referencing other keys' values when setting a variable in a dict
+# curretly produces a infinite recursion error
+# (see https://github.com/ansible/ansible/issues/8603)
+# so variables are declared here as a flat dict
+
+# the user who will run the cron job
+# and who will be the owner of the script files
+main_user: "your_main_user"
+
+papermc_download: true
+
+mc_user: "mc_serv"
+mc_home: "/home/{{ mc_user }}"
+mc_exec: "{{ mc_home }}/mc.jar"
+
+script_home: "{{ mc_home }}/scripts"
+script_startup: "{{ script_home }}/start_mc_on_reboot.sh"
+script_stopper: "{{ script_home }}/mc_stop_when_no_players.py"
+script_startup_logfile: "{{ script_home }}/startup.log"
+script_stopper_logfile: "{{ script_home }}/stopper.log"
+pipe_path: "{{ script_home }}/paper_pipe"
+# for available verbosity levels check stopper.py InputWorker().__init__ function
+script_stopper_verbosity: "warning"
+
+local_script_home: "your_local_path_to_scripts"
+local_script_startup: "{{ local_script_home }}/startup.sh"
+local_script_stopper: "{{ local_script_home }}/stopper.py"
+
+session_name: "mc_serv"
+dealloc_url: "your_deallocation_url"
+time_to_stop: "300"
+
+ram_amt: "2G"
