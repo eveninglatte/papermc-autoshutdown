@@ -1,0 +1,209 @@
+- name: Set up mc server
+  hosts: your_hosts
+  remote_user: your_ansible_user
+
+  tasks:
+    - name: Include vars from vars.yaml
+      ansible.builtin.include_vars:
+        file: "vars.yaml"
+
+    - name: Check for necessary packages installed (APT)
+      when: ansible_facts.pkg_mgr == "apt"
+      become: true
+      block:
+        - name: Packages - install dependencies for Amazon Corretto Java
+          ansible.builtin.apt:
+            state: present
+            update_cache: true
+            name:
+              - "software-properties-common"
+              - "ca-certificates"
+              - "apt-transport-https"
+              - "gnupg"
+              - "curl"
+        - name: Packages - add Corretto key
+          ansible.builtin.apt_key:
+            url: "https://apt.corretto.aws/corretto.key"
+        - name: Packages - add Corretto repo
+          ansible.builtin.apt_repository:
+            repo: "deb https://apt.corretto.aws stable main"
+        - name: Packages - install Amazon Corretto Java
+          ansible.builtin.apt:
+            state: present
+            update_cache: true
+            name:
+              - "java-21-amazon-corretto-jdk"
+              - "libxi6"
+              - "libxtst6"
+              - "libxrender1"
+        - name: Packages - install additional dependencies (pip, cron, etc.)
+          ansible.builtin.apt:
+            state: present
+            update_cache: true
+            name:
+              - "pip"
+              - "cron"
+              - "tmux"
+
+    - name: Check for necessary packages installed (DNF)
+      when: ansible_facts.pkg_mgr == "dnf"
+      become: true
+      block:
+        - name: Packages - add Corretto key
+          ansible.builtin.rpm_key:
+            key: "https://yum.corretto.aws/corretto.key"
+        - name: Packages - add Corretto repo
+          ansible.builtin.yum_repository:
+            name: Amazon Corretto added by Ansible
+            baseurl: "https://yum.corretto.aws/corretto.repo"
+        - name: Packages - install Amazon Corretto Java
+          ansible.builtin.dnf:
+            state: "present"
+            update_cache: true
+            name:
+              - "java-21-amazon-corretto-devel"
+        - name: Packages - install additional dependencies
+          ansible.builtin.dnf:
+            state: "present"
+            update_cache: true
+            name:
+              - "pip"
+              - "cronie"
+              - "tmux"
+
+    - name: Create user mc_user on system and set its login shell to nologin
+      become: true
+      ansible.builtin.user:
+        name: "{{ mc_user }}"
+        shell: "/usr/sbin/nologin"
+
+    - name: Check if necessary directories and files exist
+      become: true
+      block:
+        - name: Check if mc_home exists
+          ansible.builtin.file:
+            path: "{{ mc_home }}"
+            state: "directory"
+            owner: "{{ mc_user }}"
+            group: "{{ mc_user }}"
+        - name: Check if script_home exists
+          ansible.builtin.file:
+            path: "{{ script_home }}"
+            state: "directory"
+            owner: "{{ mc_user }}"
+            group: "{{ mc_user }}"
+            mode: "1777"
+        # perhaps theres a builtin way to do this,
+        # i just haven't been able to find one
+        - name: Check if PIPE pipe_path exists
+          ansible.builtin.shell:
+            cmd: "test -p {{ pipe_path }} && ( stat -Lc '%a' {{ pipe_path }} | grep '644') || ( mkfifo -m 0644 {{ pipe_path }} && chown {{ main_user }}:{{ main_user }} {{ pipe_path }} )"
+      rescue:
+        - name: Error
+          ansible.builtin.fail:
+            msg: "Error: couldn't access a needed file"
+
+    - name: Download PaperMC (if needed)
+      when: papermc_download
+      vars:
+        mc_version: "1.20.1"
+        papermc_base_url: "https://api.papermc.io/v2/projects/paper/versions/{{ mc_version }}/"
+      block:
+        - name: PaperMC - get latest build number
+          ansible.builtin.uri:
+            url: "{{ papermc_base_url }}"
+            method: GET
+            return_content: true
+          register: response
+        - name: PaperMC - set latest build number as a fact
+          vars:
+            papermc_build_latest: "{{ response.json.builds | max }}"
+          ansible.builtin.set_fact:
+            papermc_build_url: "{{ papermc_base_url }}/builds/{{ papermc_build_latest }}"
+        - name: PaperMC - get checksum
+          ansible.builtin.uri:
+            url: "{{ papermc_build_url }}"
+            method: GET
+            return_content: true
+          register: response
+        - name: PaperMC - download .jar file
+          become: true
+          vars:
+            checksum: "sha256:{{ response.json.downloads.application.sha256 }}"
+            papermc_final_url: "{{ papermc_build_url }}/downloads/{{ response.json.downloads.application.name }}"
+          ansible.builtin.get_url:
+            url: "{{ papermc_final_url }}"
+            dest: "{{ mc_exec }}"
+            # WARNING: if the user specified as owner doesnt exists,
+            # it defaults to remote_user!
+            owner: "{{ mc_user }}"
+            group: "{{ mc_user }}"
+            mode: "0774"
+            checksum: "{{ checksum }}"
+        - name: PaperMC - create and agree to eula.txt
+          become: true
+          ansible.builtin.lineinfile:
+            create: true
+            owner: "{{ mc_user }}"
+            group: "{{ mc_user }}"
+            path: "{{ mc_home }}/eula.txt"
+            regexp: "^eula="
+            line: "eula=true"
+
+    - name: Copy scripts to remotes
+      become: true
+      block:
+        - name: Copy script_startup to remotes
+          ansible.builtin.copy:
+            src: "{{ local_script_startup }}"
+            dest: "{{ script_startup }}"
+            mode: "0700"
+            owner: "{{ main_user }}"
+        - name: Copy script_stopper to remotes
+          ansible.builtin.copy:
+            src: "{{ local_script_stopper }}"
+            dest: "{{ script_stopper }}"
+            mode: "0700"
+            owner: "{{ main_user }}"
+        - name: Replace placeholder names in script_startup
+          ansible.builtin.blockinfile:
+            path: "{{ script_startup }}"
+            marker: "# {mark} ANSIBLE MANAGED VARIABLES"
+            block: |
+              # the user which runs the minecraft server process
+              MC_USER="{{ mc_user }}"
+              MC_HOME="{{ mc_home }}"
+              MC_EXEC="{{ mc_exec }}"
+
+              SCRIPT_HOME="{{ script_home }}"
+              SCRIPT_EXEC="{{ script_stopper }}"
+              SCRIPT_LOGFILE="{{ script_stopper_logfile }}"
+              PIPE_PATH="{{ pipe_path }}"
+              SESSION_NAME="{{ session_name }}"
+
+              RAM_AMT="{{ ram_amt }}"
+        - name: Replace placeholder names in script_stopper
+          ansible.builtin.blockinfile:
+            path: "{{ script_stopper }}"
+            marker: "# {mark} ANSIBLE MANAGED VARIABLES"
+            block: |
+              session_name = '{{ session_name }}:0.0'
+              time_to_stop = int( '{{ time_to_stop }}' )
+              dealloc_url = '{{ dealloc_url }}'
+              verbosity_lvl = '{{ script_stopper_verbosity }}'
+
+    - name: Crontab - define SHELL
+      become: true
+      ansible.builtin.cron:
+        user: "{{ main_user }}"
+        env: true
+        name: "SHELL"
+        job: "/bin/bash"
+
+    - name: Crontab - add entry to crontab
+      become: true
+      ansible.builtin.cron:
+        user: "{{ main_user }}"
+        name: "Start mc server and helper scripts on startup"
+        special_time: "reboot"
+        job: "{{ script_startup }} >> {{ script_startup_logfile }} 2>&1"
