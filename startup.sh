@@ -8,7 +8,7 @@ MC_START="sudo -u $MC_USER java -Xmx$RAM_AMT -Xms$RAM_AMT -jar $MC_EXEC --nogui"
 
 # for logging purposes
 PS4="[\$(date '+%F %T')]"
-set -xe
+set -x
 
 # these checks are necessary since tmux send-keys just sends whatever its told to send
 # and reports success even if the command sent fails
