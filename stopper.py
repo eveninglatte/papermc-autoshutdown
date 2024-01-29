@@ -24,7 +24,7 @@ class InputWorker:
         self.stdin = fileinput.input()
         self.players = []
         self.server_stopping = False
-        self.stopping_timer = threading.Timer(60.0, self.server_stop_error)
+        self.stopping_timer = threading.Timer(300.0, self.server_stop_error)
         self.str_joined = " joined the game"
         self.str_left = " left the game"
         self.last_mess = ""
@@ -96,7 +96,7 @@ class InputWorker:
 
         for line in self.stdin:
             if self.server_stopping:
-                # if the server doesnt stop after 60.0s we can assume smth is wrong
+                # if the server doesnt stop after 300.0s we can assume smth is wrong
                 if not self.stopping_timer.is_alive():
                     self.stopping_timer.start()
                 if "Closing Server" in line:
