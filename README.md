@@ -11,3 +11,6 @@ I will assume you know how to use Ansible. If you don't, Ansible docs are one of
 
 Just change the necessary variables in `vars.yaml` and `mc_playbook.yaml`. All of them start with *your_*.
 I would also advise to skim through the rest of the variables, not all of the default values are guaranteed to be fitting for your usecase.
+
+### Known issues
+- PaperMC's console log timestamp doesn't match system time (and therefore scripts' logfiles timestamps, which can lead to confusion reviewing those)
