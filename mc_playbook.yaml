@@ -191,6 +191,10 @@
               time_to_stop = int( '{{ time_to_stop }}' )
               dealloc_url = '{{ dealloc_url }}'
               verbosity_lvl = '{{ script_stopper_verbosity }}'
+      rescue:
+        - name: Error
+          ansible.builtin.fail:
+            msg: "Error while copying scripts to remotes"
 
     - name: Crontab - define SHELL
       become: true
