@@ -140,5 +140,10 @@ class InputWorker:
 # the ansible managed variables will be pasted here!
 # END ANSIBLE MANAGED VARIABLES
 
-logging = InputWorker(session_name, time_to_stop, dealloc_url, verbosity_lvl=verbosity_lvl)
+try:
+    logging = InputWorker(session_name, time_to_stop, dealloc_url, verbosity_lvl=verbosity_lvl)
+except NameError:
+    print("One or more variables are not defined", file=sys.stderr)
+    exit(1)
+
 logging.start()
